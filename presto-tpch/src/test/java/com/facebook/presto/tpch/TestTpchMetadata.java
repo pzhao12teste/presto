@@ -39,9 +39,7 @@ import static com.facebook.presto.spi.Constraint.alwaysFalse;
 import static com.facebook.presto.spi.Constraint.alwaysTrue;
 import static com.facebook.presto.spi.statistics.Estimate.unknownValue;
 import static com.facebook.presto.spi.statistics.Estimate.zeroValue;
-import static com.facebook.presto.tpch.ColumnNaming.SIMPLIFIED;
 import static com.facebook.presto.tpch.TpchMetadata.getPrestoType;
-import static com.facebook.presto.tpch.TpchRecordSet.convertToPredicate;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.tpch.CustomerColumn.MARKET_SEGMENT;
@@ -78,7 +76,6 @@ public class TestTpchMetadata
     private static final List<String> SUPPORTED_SCHEMAS = ImmutableList.of("tiny", "sf1");
 
     private final TpchMetadata tpchMetadata = new TpchMetadata("tpch");
-    private final TpchMetadata tpchMetadataWithPredicatePushdown = new TpchMetadata("tpch", true, SIMPLIFIED);
     private final ConnectorSession session = null;
 
     @Test
@@ -268,19 +265,18 @@ public class TestTpchMetadata
     @Test
     public void testPredicatePushdown()
     {
-        TpchMetadata tpchMetadata = tpchMetadataWithPredicatePushdown;
         TpchTableHandle tableHandle = tpchMetadata.getTableHandle(session, new SchemaTableName("sf1", ORDERS.getTableName()));
 
         TupleDomain<ColumnHandle> domain;
         ConnectorTableLayoutResult tableLayout;
 
         domain = fixedValueTupleDomain(tpchMetadata, ORDER_STATUS, utf8Slice("P"));
-        tableLayout = getTableOnlyLayout(tpchMetadata, session, tableHandle, new Constraint<>(domain, convertToPredicate(domain)));
+        tableLayout = getTableOnlyLayout(tpchMetadata, session, tableHandle, new Constraint(domain, tpchMetadata.convertToPredicate(domain, ORDER_STATUS)));
         assertTupleDomainEquals(tableLayout.getUnenforcedConstraint(), TupleDomain.all(), session);
         assertTupleDomainEquals(tableLayout.getTableLayout().getPredicate(), domain, session);
 
         domain = fixedValueTupleDomain(tpchMetadata, ORDER_KEY, 42L);
-        tableLayout = getTableOnlyLayout(tpchMetadata, session, tableHandle, new Constraint<>(domain, convertToPredicate(domain)));
+        tableLayout = getTableOnlyLayout(tpchMetadata, session, tableHandle, new Constraint(domain, tpchMetadata.convertToPredicate(domain, ORDER_STATUS)));
         assertTupleDomainEquals(tableLayout.getUnenforcedConstraint(), domain, session);
         assertTupleDomainEquals(
                 tableLayout.getTableLayout().getPredicate(),
@@ -306,7 +302,7 @@ public class TestTpchMetadata
                 .map(value -> fixedValueTupleDomain(tpchMetadata, column, utf8Slice(value)))
                 .collect(toList());
         TupleDomain<ColumnHandle> domain = TupleDomain.columnWiseUnion(valueDomains);
-        return new Constraint<>(domain, convertToPredicate(domain));
+        return new Constraint(domain, tpchMetadata.convertToPredicate(domain, column));
     }
 
     private static TupleDomain<ColumnHandle> fixedValueTupleDomain(TpchMetadata tpchMetadata, TpchColumn<?> column, Object value)
