@@ -94,6 +94,17 @@ public class MockSplitSource
         throw new UnsupportedOperationException();
     }
 
+    @Override
+    public ListenableFuture<List<Split>> getNextBatch(int maxSize)
+    {
+        checkState(nextBatchFuture.isDone(), "concurrent getNextBatch invocation");
+        nextBatchFuture = SettableFuture.create();
+        nextBatchMaxSize = maxSize;
+        nextBatchInvocationCount++;
+        doGetNextBatch();
+        return nextBatchFuture;
+    }
+
     private void doGetNextBatch()
     {
         checkState(splitsProduced <= totalSplits);
@@ -125,14 +136,7 @@ public class MockSplitSource
             throw new UnsupportedOperationException();
         }
         checkArgument(Lifespan.taskWide().equals(lifespan));
-
-        checkState(nextBatchFuture.isDone(), "concurrent getNextBatch invocation");
-        nextBatchFuture = SettableFuture.create();
-        nextBatchMaxSize = maxSize;
-        nextBatchInvocationCount++;
-        doGetNextBatch();
-
-        return Futures.transform(nextBatchFuture, splits -> new SplitBatch(splits, isFinished()));
+        return Futures.transform(getNextBatch(maxSize), splits -> new SplitBatch(splits, isFinished()));
     }
 
     @Override

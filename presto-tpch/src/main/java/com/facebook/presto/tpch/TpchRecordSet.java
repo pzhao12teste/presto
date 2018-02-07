@@ -21,6 +21,7 @@ import com.facebook.presto.spi.predicate.NullableValue;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.airlift.tpch.TpchColumn;
@@ -31,49 +32,60 @@ import io.airlift.tpch.TpchTable;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Predicate;
 
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.tpch.TpchMetadata.getPrestoType;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.collect.ImmutableList.toImmutableList;
-import static com.google.common.collect.ImmutableMap.toImmutableMap;
+import static com.google.common.collect.Iterables.transform;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toList;
 
 public class TpchRecordSet<E extends TpchEntity>
         implements RecordSet
 {
     public static <E extends TpchEntity> TpchRecordSet<E> createTpchRecordSet(TpchTable<E> table, double scaleFactor)
     {
-        return createTpchRecordSet(table, table.getColumns(), scaleFactor, 1, 1, TupleDomain.all());
+        return createTpchRecordSet(table, table.getColumns(), scaleFactor, 1, 1, Optional.empty());
     }
 
     public static <E extends TpchEntity> TpchRecordSet<E> createTpchRecordSet(
             TpchTable<E> table,
-            List<TpchColumn<E>> columns,
+            Iterable<TpchColumn<E>> columns,
             double scaleFactor,
             int part,
             int partCount,
-            TupleDomain<ColumnHandle> predicate)
+            Optional<TupleDomain<ColumnHandle>> predicate)
     {
-        return new TpchRecordSet<>(table.createGenerator(scaleFactor, part, partCount), table, columns, predicate);
+        return new TpchRecordSet<>(table.createGenerator(scaleFactor, part, partCount), columns, predicate);
     }
 
-    private final Iterable<E> rows;
-    private final TpchTable<E> table;
+    private final Iterable<E> table;
     private final List<TpchColumn<E>> columns;
     private final List<Type> columnTypes;
-    private final TupleDomain<ColumnHandle> predicate;
+    private final List<TpchColumnHandle> columnHandles;
+    private final Optional<Predicate<Map<ColumnHandle, NullableValue>>> predicate;
 
-    public TpchRecordSet(Iterable<E> rows, TpchTable<E> table, List<TpchColumn<E>> columns, TupleDomain<ColumnHandle> predicate)
+    public TpchRecordSet(Iterable<E> table, Iterable<TpchColumn<E>> columns, Optional<TupleDomain<ColumnHandle>> predicate)
     {
-        this.rows = requireNonNull(rows, "rows is null");
-        this.table = requireNonNull(table, "table is null");
-        this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
-        this.columnTypes = columns.stream()
-                .map(TpchMetadata::getPrestoType)
-                .collect(toImmutableList());
-        this.predicate = requireNonNull(predicate, "predicate is null");
+        requireNonNull(table, "readerSupplier is null");
+
+        this.table = table;
+        this.columns = ImmutableList.copyOf(columns);
+
+        this.columnTypes = ImmutableList.copyOf(transform(columns, TpchMetadata::getPrestoType));
+
+        columnHandles = this.columns.stream()
+                .map(column -> new TpchColumnHandle(column.getColumnName(), getPrestoType(column)))
+                .collect(toList());
+        this.predicate = predicate.map(TpchRecordSet::convertToPredicate);
+    }
+
+    static Predicate<Map<ColumnHandle, NullableValue>> convertToPredicate(TupleDomain<ColumnHandle> tupleDomain)
+    {
+        return bindings -> tupleDomain.contains(TupleDomain.fromFixedValues(bindings));
     }
 
     @Override
@@ -85,25 +97,21 @@ public class TpchRecordSet<E extends TpchEntity>
     @Override
     public RecordCursor cursor()
     {
-        return new TpchRecordCursor<>(rows.iterator(), table, columns, predicate);
+        return new TpchRecordCursor<>(table.iterator(), columns);
     }
 
-    public static final class TpchRecordCursor<E extends TpchEntity>
+    public class TpchRecordCursor<E extends TpchEntity>
             implements RecordCursor
     {
         private final Iterator<E> rows;
-        private final TpchTable<E> table;
         private final List<TpchColumn<E>> columns;
-        private final TupleDomain<ColumnHandle> predicate;
         private E row;
         private boolean closed;
 
-        public TpchRecordCursor(Iterator<E> rows, TpchTable<E> table, List<TpchColumn<E>> columns, TupleDomain<ColumnHandle> predicate)
+        public TpchRecordCursor(Iterator<E> rows, List<TpchColumn<E>> columns)
         {
-            this.rows = requireNonNull(rows, "rows is null");
-            this.table = requireNonNull(table, "table is null");
-            this.columns = requireNonNull(columns, "columns is null");
-            this.predicate = requireNonNull(predicate, "predicate is null");
+            this.rows = rows;
+            this.columns = columns;
         }
 
         @Override
@@ -149,11 +157,7 @@ public class TpchRecordSet<E extends TpchEntity>
         public long getLong(int field)
         {
             checkState(row != null, "No current row");
-            return getLong(getTpchColumn(field));
-        }
-
-        private long getLong(TpchColumn<E> tpchColumn)
-        {
+            TpchColumn<E> tpchColumn = getTpchColumn(field);
             if (tpchColumn.getType().getBase() == TpchColumnType.Base.DATE) {
                 return tpchColumn.getDate(row);
             }
@@ -167,24 +171,14 @@ public class TpchRecordSet<E extends TpchEntity>
         public double getDouble(int field)
         {
             checkState(row != null, "No current row");
-            return getDouble(getTpchColumn(field));
-        }
-
-        private double getDouble(TpchColumn<E> tpchColumn)
-        {
-            return tpchColumn.getDouble(row);
+            return getTpchColumn(field).getDouble(row);
         }
 
         @Override
         public Slice getSlice(int field)
         {
             checkState(row != null, "No current row");
-            return getSlice(getTpchColumn(field));
-        }
-
-        private Slice getSlice(TpchColumn<E> tpchColumn)
-        {
-            return Slices.utf8Slice(tpchColumn.getString(row));
+            return Slices.utf8Slice(getTpchColumn(field).getString(row));
         }
 
         @Override
@@ -208,38 +202,32 @@ public class TpchRecordSet<E extends TpchEntity>
 
         private boolean rowMatchesPredicate()
         {
-            if (predicate.isAll()) {
+            if (!predicate.isPresent()) {
                 return true;
             }
-            if (predicate.isNone()) {
-                return false;
-            }
-
-            Map<ColumnHandle, NullableValue> rowMap = predicate.getDomains().get().keySet().stream()
-                    .collect(toImmutableMap(
-                            column -> column,
-                            column -> {
-                                TpchColumnHandle tpchColumnHandle = (TpchColumnHandle) column;
-                                Type type = tpchColumnHandle.getType();
-                                TpchColumn tpchColumn = table.getColumn(tpchColumnHandle.getColumnName());
-                                return NullableValue.of(type, getPrestoObject(tpchColumn, type));
-                            }));
-
-            TupleDomain<ColumnHandle> rowTupleDomain = TupleDomain.fromFixedValues(rowMap);
-
-            return predicate.contains(rowTupleDomain);
+            return predicate.get().test(rowMap());
         }
 
-        private Object getPrestoObject(TpchColumn<E> column, Type type)
+        private Map<ColumnHandle, NullableValue> rowMap()
+        {
+            ImmutableMap.Builder<ColumnHandle, NullableValue> builder = ImmutableMap.builder();
+            for (int field = 0; field < columnHandles.size(); ++field) {
+                Type type = columnTypes.get(field);
+                builder.put(columnHandles.get(field), NullableValue.of(type, getPrestoObject(field, type)));
+            }
+            return builder.build();
+        }
+
+        private Object getPrestoObject(int field, Type type)
         {
             if (type.getJavaType() == long.class) {
-                return getLong(column);
+                return getLong(field);
             }
             else if (type.getJavaType() == double.class) {
-                return getDouble(column);
+                return getDouble(field);
             }
             else if (type.getJavaType() == Slice.class) {
-                return getSlice(column);
+                return getSlice(field);
             }
             else {
                 throw new PrestoException(NOT_SUPPORTED, format("Unsupported column type %s", type.getDisplayName()));

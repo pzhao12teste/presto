@@ -23,32 +23,34 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import static com.facebook.presto.operator.Operator.NOT_BLOCKED;
-import static com.facebook.presto.operator.exchange.LocalExchanger.FINISHED;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
 public class LocalExchangeSink
 {
-    public static LocalExchangeSink finishedLocalExchangeSink(List<Type> types)
+    public static LocalExchangeSink finishedLocalExchangeSink(List<Type> types, LocalExchangeMemoryManager memoryManager)
     {
-        LocalExchangeSink finishedSink = new LocalExchangeSink(types, FINISHED, sink -> {});
+        LocalExchangeSink finishedSink = new LocalExchangeSink(types, page -> {}, memoryManager, sink -> {});
         finishedSink.finish();
         return finishedSink;
     }
 
     private final List<Type> types;
-    private final LocalExchanger exchanger;
+    private final Consumer<Page> exchanger;
+    private final LocalExchangeMemoryManager memoryManager;
     private final Consumer<LocalExchangeSink> onFinish;
 
     private final AtomicBoolean finished = new AtomicBoolean();
 
     public LocalExchangeSink(
             List<Type> types,
-            LocalExchanger exchanger,
+            Consumer<Page> exchanger,
+            LocalExchangeMemoryManager memoryManager,
             Consumer<LocalExchangeSink> onFinish)
     {
         this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
         this.exchanger = requireNonNull(exchanger, "exchanger is null");
+        this.memoryManager = requireNonNull(memoryManager, "memoryManager is null");
         this.onFinish = requireNonNull(onFinish, "onFinish is null");
     }
 
@@ -91,6 +93,6 @@ public class LocalExchangeSink
         if (isFinished()) {
             return NOT_BLOCKED;
         }
-        return exchanger.waitForWriting();
+        return memoryManager.getNotFullFuture();
     }
 }

@@ -19,12 +19,25 @@ import java.io.Closeable;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
 import static java.util.Objects.requireNonNull;
 
 public interface ConnectorSplitSource
         extends Closeable
 {
-    CompletableFuture<ConnectorSplitBatch> getNextBatch(ConnectorPartitionHandle partitionHandle, int maxSize);
+    @Deprecated
+    default CompletableFuture<List<ConnectorSplit>> getNextBatch(int maxSize)
+    {
+        throw new UnsupportedOperationException("deprecated");
+    }
+
+    default CompletableFuture<ConnectorSplitBatch> getNextBatch(ConnectorPartitionHandle partitionHandle, int maxSize)
+    {
+        if (partitionHandle != NOT_PARTITIONED) {
+            throw new UnsupportedOperationException();
+        }
+        return getNextBatch(maxSize).thenApply(splits -> new ConnectorSplitBatch(splits, isFinished()));
+    }
 
     @Override
     void close();

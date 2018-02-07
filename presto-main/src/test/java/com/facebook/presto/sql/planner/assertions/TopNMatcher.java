@@ -16,31 +16,33 @@ package com.facebook.presto.sql.planner.assertions;
 import com.facebook.presto.Session;
 import com.facebook.presto.cost.StatsProvider;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.sql.planner.OrderingScheme;
+import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.sql.planner.Symbol;
-import com.facebook.presto.sql.planner.assertions.PlanMatchPattern.Ordering;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.TopNNode;
+import com.google.common.base.Functions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Maps;
 
 import java.util.List;
+import java.util.Map;
 
 import static com.facebook.presto.sql.planner.assertions.MatchResult.NO_MATCH;
 import static com.facebook.presto.sql.planner.assertions.MatchResult.match;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
-import static java.util.Objects.requireNonNull;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 
 public class TopNMatcher
         implements Matcher
 {
     private final long count;
-    private final List<Ordering> orderBy;
+    private final List<PlanTestSymbol> orderBySymbols;
 
-    public TopNMatcher(long count, List<Ordering> orderBy)
+    public TopNMatcher(long count, List<PlanTestSymbol> orderBySymbols)
     {
         this.count = count;
-        this.orderBy = ImmutableList.copyOf(requireNonNull(orderBy, "orderBy is null"));
+        this.orderBySymbols = ImmutableList.copyOf(orderBySymbols);
     }
 
     @Override
@@ -59,16 +61,18 @@ public class TopNMatcher
             return NO_MATCH;
         }
 
-        for (int i = 0; i < orderBy.size(); ++i) {
-            Ordering ordering = orderBy.get(i);
-            Symbol symbol = Symbol.from(symbolAliases.get(ordering.getField()));
-            OrderingScheme orderingScheme = topNNode.getOrderingScheme();
-            if (!symbol.equals(orderingScheme.getOrderBy().get(i))) {
-                return NO_MATCH;
-            }
-            if (!ordering.getSortOrder().equals(orderingScheme.getOrdering(symbol))) {
-                return NO_MATCH;
-            }
+        List<Symbol> expectedOrderBy = orderBySymbols.stream()
+                .map(alias -> alias.toSymbol(symbolAliases))
+                .collect(toImmutableList());
+
+        if (!topNNode.getOrderBy().equals(expectedOrderBy)) {
+            return NO_MATCH;
+        }
+
+        Map<Symbol, SortOrder> expectedOrderings = Maps.toMap(expectedOrderBy, Functions.constant(SortOrder.ASC_NULLS_FIRST));
+
+        if (!topNNode.getOrderings().equals(expectedOrderings)) {
+            return NO_MATCH;
         }
 
         return match();
@@ -79,7 +83,7 @@ public class TopNMatcher
     {
         return toStringHelper(this)
                 .add("count", count)
-                .add("orderBy", orderBy)
+                .add("orderBySymbols", orderBySymbols)
                 .toString();
     }
 }

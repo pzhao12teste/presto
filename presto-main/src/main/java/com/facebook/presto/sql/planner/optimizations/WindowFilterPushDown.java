@@ -134,7 +134,7 @@ public class WindowFilterPushDown
             else if (source instanceof WindowNode && canOptimizeWindowFunction((WindowNode) source)) {
                 WindowNode windowNode = (WindowNode) source;
                 // verify that unordered row_number window functions are replaced by RowNumberNode
-                verify(windowNode.getOrderingScheme().isPresent());
+                verify(!windowNode.getOrderBy().isEmpty());
                 TopNRowNumberNode topNRowNumberNode = convertToTopNRowNumber(windowNode, limit);
                 if (windowNode.getPartitionBy().isEmpty()) {
                     return topNRowNumberNode;
@@ -262,7 +262,7 @@ public class WindowFilterPushDown
 
         private static boolean canReplaceWithRowNumber(WindowNode node)
         {
-            return canOptimizeWindowFunction(node) && !node.getOrderingScheme().isPresent();
+            return canOptimizeWindowFunction(node) && node.getOrderBy().isEmpty();
         }
 
         private static boolean canOptimizeWindowFunction(WindowNode node)

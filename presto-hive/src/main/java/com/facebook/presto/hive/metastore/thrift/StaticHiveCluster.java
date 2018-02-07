@@ -15,7 +15,7 @@ package com.facebook.presto.hive.metastore.thrift;
 
 import com.facebook.presto.spi.PrestoException;
 import com.google.common.net.HostAndPort;
-import org.apache.thrift.TException;
+import org.apache.thrift.transport.TTransportException;
 
 import javax.inject.Inject;
 
@@ -35,15 +35,14 @@ public class StaticHiveCluster
 {
     private final List<HostAndPort> addresses;
     private final HiveMetastoreClientFactory clientFactory;
-    private final String metastoreUsername;
 
     @Inject
     public StaticHiveCluster(StaticMetastoreConfig config, HiveMetastoreClientFactory clientFactory)
     {
-        this(config.getMetastoreUris(), config.getMetastoreUsername(), clientFactory);
+        this(config.getMetastoreUris(), clientFactory);
     }
 
-    public StaticHiveCluster(List<URI> metastoreUris, String metastoreUsername, HiveMetastoreClientFactory clientFactory)
+    public StaticHiveCluster(List<URI> metastoreUris, HiveMetastoreClientFactory clientFactory)
     {
         requireNonNull(metastoreUris, "metastoreUris is null");
         checkArgument(!metastoreUris.isEmpty(), "metastoreUris must specify at least one URI");
@@ -51,7 +50,6 @@ public class StaticHiveCluster
                 .map(StaticHiveCluster::checkMetastoreUri)
                 .map(uri -> HostAndPort.fromParts(uri.getHost(), uri.getPort()))
                 .collect(toList());
-        this.metastoreUsername = metastoreUsername;
         this.clientFactory = requireNonNull(clientFactory, "clientFactory is null");
     }
 
@@ -69,16 +67,12 @@ public class StaticHiveCluster
         List<HostAndPort> metastores = new ArrayList<>(addresses);
         Collections.shuffle(metastores.subList(1, metastores.size()));
 
-        TException lastException = null;
+        TTransportException lastException = null;
         for (HostAndPort metastore : metastores) {
             try {
-                HiveMetastoreClient client = clientFactory.create(metastore);
-                if (!isNullOrEmpty(metastoreUsername)) {
-                    client.setUGI(metastoreUsername);
-                }
-                return client;
+                return clientFactory.create(metastore);
             }
-            catch (TException e) {
+            catch (TTransportException e) {
                 lastException = e;
             }
         }

@@ -26,12 +26,9 @@ import org.testng.annotations.Test;
 import java.util.function.Predicate;
 
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.expression;
-import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.sort;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.strictProject;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.topN;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
-import static com.facebook.presto.sql.tree.SortItem.NullOrdering.FIRST;
-import static com.facebook.presto.sql.tree.SortItem.Ordering.ASCENDING;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 
 public class TestPruneTopNColumns
@@ -49,7 +46,7 @@ public class TestPruneTopNColumns
                                 ImmutableMap.of("b", expression("b")),
                                 topN(
                                         COUNT,
-                                        ImmutableList.of(sort("b", ASCENDING, FIRST)),
+                                        ImmutableList.of("b"),
                                         strictProject(
                                                 ImmutableMap.of("b", expression("b")),
                                                 values("a", "b")))));

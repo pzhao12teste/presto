@@ -41,13 +41,11 @@ public class QueryRunner
         implements Closeable
 {
     private final AtomicReference<ClientSession> session;
-    private final boolean debug;
     private final OkHttpClient httpClient;
     private final Consumer<OkHttpClient.Builder> sslSetup;
 
     public QueryRunner(
             ClientSession session,
-            boolean debug,
             Optional<HostAndPort> socksProxy,
             Optional<HostAndPort> httpProxy,
             Optional<String> keystorePath,
@@ -65,7 +63,6 @@ public class QueryRunner
             boolean kerberosEnabled)
     {
         this.session = new AtomicReference<>(requireNonNull(session, "session is null"));
-        this.debug = debug;
 
         this.sslSetup = builder -> setupSsl(builder, keystorePath, keystorePassword, truststorePath, truststorePassword);
 
@@ -101,14 +98,9 @@ public class QueryRunner
         this.session.set(requireNonNull(session, "session is null"));
     }
 
-    public boolean isDebug()
-    {
-        return debug;
-    }
-
     public Query startQuery(String query)
     {
-        return new Query(startInternalQuery(session.get(), query), debug);
+        return new Query(startInternalQuery(session.get(), query));
     }
 
     public StatementClient startInternalQuery(String query)

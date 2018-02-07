@@ -777,10 +777,6 @@ class QueryPlanner
             List<Symbol> sourceSymbols = subPlan.getRoot().getOutputSymbols();
             ImmutableList.Builder<Symbol> orderBySymbols = ImmutableList.builder();
             orderBySymbols.addAll(orderings.keySet());
-            Optional<OrderingScheme> orderingScheme = Optional.empty();
-            if (!orderings.isEmpty()) {
-                orderingScheme = Optional.of(new OrderingScheme(orderBySymbols.build(), orderings));
-            }
 
             // create window node
             subPlan = new PlanBuilder(outputTranslations,
@@ -789,7 +785,8 @@ class QueryPlanner
                             subPlan.getRoot(),
                             new WindowNode.Specification(
                                     partitionBySymbols.build(),
-                                    orderingScheme),
+                                    orderBySymbols.build(),
+                                    orderings),
                             ImmutableMap.of(newSymbol, function),
                             Optional.empty(),
                             ImmutableSet.of(),
@@ -862,12 +859,11 @@ class QueryPlanner
         }
 
         PlanNode planNode;
-        OrderingScheme orderingScheme = new OrderingScheme(orderBySymbols.build(), orderings);
         if (limit.isPresent() && !limit.get().equalsIgnoreCase("all")) {
-            planNode = new TopNNode(idAllocator.getNextId(), subPlan.getRoot(), Long.parseLong(limit.get()), orderingScheme, TopNNode.Step.SINGLE);
+            planNode = new TopNNode(idAllocator.getNextId(), subPlan.getRoot(), Long.parseLong(limit.get()), orderBySymbols.build(), orderings, TopNNode.Step.SINGLE);
         }
         else {
-            planNode = new SortNode(idAllocator.getNextId(), subPlan.getRoot(), orderingScheme);
+            planNode = new SortNode(idAllocator.getNextId(), subPlan.getRoot(), orderBySymbols.build(), orderings);
         }
 
         return subPlan.withNewRoot(planNode);

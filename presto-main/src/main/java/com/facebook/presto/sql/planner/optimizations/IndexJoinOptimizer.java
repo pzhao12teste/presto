@@ -353,7 +353,7 @@ public class IndexJoinOptimizer
             }
 
             // Don't need this restriction if we can prove that all order by symbols are deterministically produced
-            if (node.getOrderingScheme().isPresent()) {
+            if (!node.getOrderBy().isEmpty()) {
                 return node;
             }
 
