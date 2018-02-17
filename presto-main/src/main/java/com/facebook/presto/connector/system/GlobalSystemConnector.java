@@ -130,9 +130,7 @@ public class GlobalSystemConnector
     @Override
     public ConnectorSplitManager getSplitManager()
     {
-        return (transactionHandle, session, layout, splitSchedulingStrategy) -> {
-            throw new UnsupportedOperationException();
-        };
+        return new ConnectorSplitManager() {};
     }
 
     @Override

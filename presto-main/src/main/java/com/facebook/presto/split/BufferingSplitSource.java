@@ -24,6 +24,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static java.util.Objects.requireNonNull;
@@ -50,6 +51,13 @@ public class BufferingSplitSource
     public ConnectorTransactionHandle getTransactionHandle()
     {
         return source.getTransactionHandle();
+    }
+
+    @Override
+    public ListenableFuture<List<Split>> getNextBatch(int maxSize)
+    {
+        checkArgument(maxSize > 0, "Cannot fetch a batch of zero size");
+        return Futures.transform(getNextBatch(NOT_PARTITIONED, Lifespan.taskWide(), maxSize), SplitBatch::getSplits);
     }
 
     @Override

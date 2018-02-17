@@ -118,11 +118,12 @@ public class DistributedQueryRunner
                 servers.add(worker);
             }
 
-            Map<String, String> extraCoordinatorProperties = new HashMap<>();
-            extraCoordinatorProperties.put("optimizer.optimize-mixed-distinct-aggregations", "true");
-            extraCoordinatorProperties.put("experimental.iterative-optimizer-enabled", "true");
-            extraCoordinatorProperties.putAll(extraProperties);
-            extraCoordinatorProperties.putAll(coordinatorProperties);
+            Map<String, String> extraCoordinatorProperties = ImmutableMap.<String, String>builder()
+                    .put("optimizer.optimize-mixed-distinct-aggregations", "true")
+                    .put("experimental.iterative-optimizer-enabled", "true")
+                    .putAll(extraProperties)
+                    .putAll(coordinatorProperties)
+                    .build();
             coordinator = closer.register(createTestingPrestoServer(discoveryServer.getBaseUrl(), true, extraCoordinatorProperties, parserOptions, environment));
             servers.add(coordinator);
 

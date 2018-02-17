@@ -13,14 +13,17 @@
  */
 package com.facebook.presto.sql.planner.plan;
 
-import com.facebook.presto.sql.planner.OrderingScheme;
+import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.sql.planner.Symbol;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 
 import java.util.List;
+import java.util.Map;
 
 import static java.util.Objects.requireNonNull;
 
@@ -28,20 +31,25 @@ public class SortNode
         extends PlanNode
 {
     private final PlanNode source;
-    private final OrderingScheme orderingScheme;
+    private final List<Symbol> orderBy;
+    private final Map<Symbol, SortOrder> orderings;
 
     @JsonCreator
     public SortNode(@JsonProperty("id") PlanNodeId id,
             @JsonProperty("source") PlanNode source,
-            @JsonProperty("orderingScheme") OrderingScheme orderingScheme)
+            @JsonProperty("orderBy") List<Symbol> orderBy,
+            @JsonProperty("orderings") Map<Symbol, SortOrder> orderings)
     {
         super(id);
 
         requireNonNull(source, "source is null");
-        requireNonNull(orderingScheme, "orderingScheme is null");
+        requireNonNull(orderBy, "orderBy is null");
+        Preconditions.checkArgument(!orderBy.isEmpty(), "orderBy is empty");
+        Preconditions.checkArgument(orderings.size() == orderBy.size(), "orderBy and orderings sizes don't match");
 
         this.source = source;
-        this.orderingScheme = orderingScheme;
+        this.orderBy = ImmutableList.copyOf(orderBy);
+        this.orderings = ImmutableMap.copyOf(orderings);
     }
 
     @Override
@@ -62,10 +70,16 @@ public class SortNode
         return source.getOutputSymbols();
     }
 
-    @JsonProperty("orderingScheme")
-    public OrderingScheme getOrderingScheme()
+    @JsonProperty("orderBy")
+    public List<Symbol> getOrderBy()
     {
-        return orderingScheme;
+        return orderBy;
+    }
+
+    @JsonProperty("orderings")
+    public Map<Symbol, SortOrder> getOrderings()
+    {
+        return orderings;
     }
 
     @Override
@@ -77,6 +91,6 @@ public class SortNode
     @Override
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
-        return new SortNode(getId(), Iterables.getOnlyElement(newChildren), orderingScheme);
+        return new SortNode(getId(), Iterables.getOnlyElement(newChildren), orderBy, orderings);
     }
 }

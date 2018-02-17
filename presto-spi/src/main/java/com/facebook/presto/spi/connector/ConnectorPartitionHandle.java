@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.spi.connector;
 
-@SuppressWarnings("ClassMayBeInterface")
 public abstract class ConnectorPartitionHandle
 {
     @Override

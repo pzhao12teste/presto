@@ -15,7 +15,6 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.hive.InternalHiveSplit.InternalHiveBlock;
 import com.facebook.presto.spi.ConnectorSplit;
-import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.predicate.TupleDomain;
@@ -34,7 +33,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static com.facebook.presto.hive.HiveTestUtils.SESSION;
-import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.testing.Assertions.assertContains;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
@@ -67,15 +65,15 @@ public class TestHiveSplitSource
         }
 
         // remove 1 split
-        assertEquals(getSplits(hiveSplitSource, 1).size(), 1);
+        assertEquals(getFutureValue(hiveSplitSource.getNextBatch(1)).size(), 1);
         assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 9);
 
         // remove 4 splits
-        assertEquals(getSplits(hiveSplitSource, 4).size(), 4);
+        assertEquals(getFutureValue(hiveSplitSource.getNextBatch(4)).size(), 4);
         assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 5);
 
         // try to remove 20 splits, and verify we only got 5
-        assertEquals(getSplits(hiveSplitSource, 20).size(), 5);
+        assertEquals(getFutureValue(hiveSplitSource.getNextBatch(20)).size(), 5);
         assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 0);
     }
 
@@ -101,7 +99,7 @@ public class TestHiveSplitSource
         }
 
         // remove a split and verify
-        assertEquals(getSplits(hiveSplitSource, 1).size(), 1);
+        assertEquals(getFutureValue(hiveSplitSource.getNextBatch(1)).size(), 1);
         assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 4);
 
         // fail source
@@ -110,7 +108,7 @@ public class TestHiveSplitSource
 
         // try to remove a split and verify we got the expected exception
         try {
-            getSplits(hiveSplitSource, 1);
+            getFutureValue(hiveSplitSource.getNextBatch(1));
             fail("expected RuntimeException");
         }
         catch (RuntimeException e) {
@@ -128,7 +126,7 @@ public class TestHiveSplitSource
 
         // try to remove a split and verify we got the first exception
         try {
-            getSplits(hiveSplitSource, 1);
+            getFutureValue(hiveSplitSource.getNextBatch(1));
             fail("expected RuntimeException");
         }
         catch (RuntimeException e) {
@@ -163,7 +161,7 @@ public class TestHiveSplitSource
             {
                 try {
                     started.countDown();
-                    List<ConnectorSplit> batch = getSplits(hiveSplitSource, 1);
+                    List<ConnectorSplit> batch = getFutureValue(hiveSplitSource.getNextBatch(1));
                     assertEquals(batch.size(), 1);
                     splits.set(batch.get(0));
                 }
@@ -231,7 +229,7 @@ public class TestHiveSplitSource
             assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), i + 1);
         }
 
-        assertEquals(getSplits(hiveSplitSource, maxSplitCount).size(), maxSplitCount);
+        assertEquals(getFutureValue(hiveSplitSource.getNextBatch(maxSplitCount)).size(), maxSplitCount);
 
         for (int i = 0; i < maxSplitCount; i++) {
             hiveSplitSource.addToQueue(testSplit);
@@ -244,11 +242,6 @@ public class TestHiveSplitSource
         catch (PrestoException e) {
             assertContains(e.getMessage(), "Split buffering for database.table exceeded memory limit");
         }
-    }
-
-    private static List<ConnectorSplit> getSplits(ConnectorSplitSource source, int maxSize)
-    {
-        return getFutureValue(source.getNextBatch(NOT_PARTITIONED, maxSize)).getSplits();
     }
 
     private static class TestingHiveSplitLoader

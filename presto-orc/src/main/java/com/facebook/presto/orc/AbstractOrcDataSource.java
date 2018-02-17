@@ -161,7 +161,7 @@ public abstract class AbstractOrcDataSource
                 for (Entry<K, DiskRange> diskRangeEntry : diskRanges.entrySet()) {
                     DiskRange diskRange = diskRangeEntry.getValue();
                     if (mergedRange.contains(diskRange)) {
-                        slices.put(diskRangeEntry.getKey(), new LazySliceInput(diskRange.getLength(), new LazyMergedSliceLoader(diskRange, mergedRangeLazyLoader)));
+                        slices.put(diskRangeEntry.getKey(), new LazySliceInput(diskRange.getLength(), new LazySliceLoader(diskRange, mergedRangeLazyLoader)));
                     }
                 }
             }
@@ -193,8 +193,8 @@ public abstract class AbstractOrcDataSource
 
         ImmutableMap.Builder<K, FixedLengthSliceInput> slices = ImmutableMap.builder();
         for (Entry<K, DiskRange> entry : diskRanges.entrySet()) {
-            DiskRange diskRange = entry.getValue();
-            slices.put(entry.getKey(), new LazySliceInput(diskRange.getLength(), new LazyChunkedSliceLoader(diskRange, toIntExact(streamBufferSize.toBytes()))));
+            ChunkedSliceInput sliceInput = new ChunkedSliceInput(new ChunkedSliceLoader(entry.getValue()), toIntExact(streamBufferSize.toBytes()));
+            slices.put(entry.getKey(), sliceInput);
         }
         return slices.build();
     }
@@ -240,13 +240,13 @@ public abstract class AbstractOrcDataSource
         }
     }
 
-    private final class LazyMergedSliceLoader
+    private final class LazySliceLoader
             implements Supplier<FixedLengthSliceInput>
     {
         private final DiskRange diskRange;
         private final LazyBufferLoader lazyBufferLoader;
 
-        public LazyMergedSliceLoader(DiskRange diskRange, LazyBufferLoader lazyBufferLoader)
+        public LazySliceLoader(DiskRange diskRange, LazyBufferLoader lazyBufferLoader)
         {
             this.diskRange = requireNonNull(diskRange, "diskRange is null");
             this.lazyBufferLoader = requireNonNull(lazyBufferLoader, "lazyBufferLoader is null");
@@ -320,26 +320,6 @@ public abstract class AbstractOrcDataSource
         public Slice getSlice()
         {
             return slice;
-        }
-    }
-
-    private final class LazyChunkedSliceLoader
-            implements Supplier<FixedLengthSliceInput>
-    {
-        private final DiskRange diskRange;
-        private final int bufferSize;
-
-        public LazyChunkedSliceLoader(DiskRange diskRange, int bufferSize)
-        {
-            this.diskRange = requireNonNull(diskRange, "diskRange is null");
-            checkArgument(bufferSize > 0, "bufferSize must be greater than 0");
-            this.bufferSize = bufferSize;
-        }
-
-        @Override
-        public FixedLengthSliceInput get()
-        {
-            return new ChunkedSliceInput(new ChunkedSliceLoader(diskRange), bufferSize);
         }
     }
 }

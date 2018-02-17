@@ -112,7 +112,4 @@ public interface HiveMetastoreClient
 
     boolean revokePrivileges(PrivilegeBag privilegeBag)
             throws TException;
-
-    void setUGI(String userName)
-            throws TException;
 }

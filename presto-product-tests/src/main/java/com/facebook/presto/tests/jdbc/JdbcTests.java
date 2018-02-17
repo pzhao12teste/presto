@@ -15,6 +15,7 @@ package com.facebook.presto.tests.jdbc;
 
 import com.facebook.presto.jdbc.PrestoConnection;
 import io.airlift.log.Logger;
+import io.prestodb.tempto.BeforeTestWithContext;
 import io.prestodb.tempto.ProductTest;
 import io.prestodb.tempto.Requirement;
 import io.prestodb.tempto.RequirementsProvider;
@@ -24,14 +25,10 @@ import io.prestodb.tempto.fulfillment.table.hive.tpch.ImmutableTpchTablesRequire
 import io.prestodb.tempto.query.QueryResult;
 import org.testng.annotations.Test;
 
-import javax.inject.Inject;
-import javax.inject.Named;
-
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.Date;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 
@@ -66,18 +63,6 @@ public class JdbcTests
     private static final Logger LOGGER = Logger.get(JdbcTests.class);
     private static final String TABLE_NAME = "nation_table_name";
 
-    @Inject
-    @Named("databases.presto.jdbc_url")
-    private String prestoJdbcURL;
-
-    @Inject
-    @Named("databases.presto.jdbc_user")
-    private String prestoJdbcUser;
-
-    @Inject
-    @Named("databases.presto.jdbc_password")
-    private String prestoJdbcPassword;
-
     private static class ImmutableAndMutableNationTable
             implements RequirementsProvider
     {
@@ -87,12 +72,20 @@ public class JdbcTests
         }
     }
 
+    private Connection connection;
+
+    @BeforeTestWithContext
+    public void setup()
+    {
+        connection = defaultQueryExecutor().getConnection();
+    }
+
     @Test(groups = JDBC)
     @Requires(ImmutableNationTable.class)
     public void shouldExecuteQuery()
             throws SQLException
     {
-        try (Statement statement = connection().createStatement()) {
+        try (Statement statement = connection.createStatement()) {
             QueryResult result = queryResult(statement, "select * from hive.default.nation");
             assertThat(result).matches(PRESTO_NATION_RESULT);
         }
@@ -106,7 +99,7 @@ public class JdbcTests
         String tableNameInDatabase = mutableTablesState().get(TABLE_NAME).getNameInDatabase();
         assertThat(query("SELECT * FROM " + tableNameInDatabase)).hasNoRows();
 
-        try (Statement statement = connection().createStatement()) {
+        try (Statement statement = connection.createStatement()) {
             assertThat(statement.executeUpdate("insert into " + tableNameInDatabase + " select * from nation"))
                     .isEqualTo(25);
         }
@@ -119,16 +112,11 @@ public class JdbcTests
     public void shouldExecuteQueryWithSelectedCatalogAndSchema()
             throws SQLException
     {
-        if (usingTeradataJdbc4Driver(connection())) {
-            LOGGER.warn("connection().setSchema() is not supported in JDBC 4");
-        }
-        else {
-            connection().setCatalog("hive");
-            connection().setSchema("default");
-            try (Statement statement = connection().createStatement()) {
-                QueryResult result = queryResult(statement, "select * from nation");
-                assertThat(result).matches(PRESTO_NATION_RESULT);
-            }
+        connection.setCatalog("hive");
+        connection.setSchema("default");
+        try (Statement statement = connection.createStatement()) {
+            QueryResult result = queryResult(statement, "select * from nation");
+            assertThat(result).matches(PRESTO_NATION_RESULT);
         }
     }
 
@@ -136,34 +124,16 @@ public class JdbcTests
     public void shouldSetTimezone()
             throws SQLException
     {
-        String timeZoneId = "Indian/Kerguelen";
-        if (usingPrestoJdbcDriver(connection())) {
-            ((PrestoConnection) connection()).setTimeZoneId(timeZoneId);
-            assertConnectionTimezone(connection(), timeZoneId);
-        }
-        else if (usingTeradataJdbcDriver(connection())) {
-            String prestoJdbcURLTestTimeZone;
-            String testTimeZone = "TimeZoneID=" + timeZoneId + ";";
-            if (prestoJdbcURL.contains("TimeZoneID=")) {
-                prestoJdbcURLTestTimeZone = prestoJdbcURL.replaceFirst("TimeZoneID=[\\w/]*;", testTimeZone);
+        if (usingPrestoJdbcDriver(connection)) {
+            String timeZoneId = "Indian/Kerguelen";
+            ((PrestoConnection) connection).setTimeZoneId(timeZoneId);
+            try (Statement statement = connection.createStatement()) {
+                QueryResult result = queryResult(statement, "select current_timezone()");
+                assertThat(result).contains(row(timeZoneId));
             }
-            else {
-                prestoJdbcURLTestTimeZone = prestoJdbcURL + ";" + testTimeZone;
-            }
-            Connection testConnection = DriverManager.getConnection(prestoJdbcURLTestTimeZone, prestoJdbcUser, prestoJdbcPassword);
-            assertConnectionTimezone(testConnection, timeZoneId);
         }
         else {
             LOGGER.warn("shouldSetTimezone() only applies to PrestoJdbcDriver");
-        }
-    }
-
-    private void assertConnectionTimezone(Connection connection, String timeZoneId)
-            throws SQLException
-    {
-        try (Statement statement = connection.createStatement()) {
-            QueryResult result = queryResult(statement, "select current_timezone()");
-            assertThat(result).contains(row(timeZoneId));
         }
     }
 
@@ -171,9 +141,9 @@ public class JdbcTests
     public void shouldSetLocale()
             throws SQLException
     {
-        if (usingPrestoJdbcDriver(connection())) {
-            ((PrestoConnection) connection()).setLocale(CHINESE);
-            try (Statement statement = connection().createStatement()) {
+        if (usingPrestoJdbcDriver(connection)) {
+            ((PrestoConnection) connection).setLocale(CHINESE);
+            try (Statement statement = connection.createStatement()) {
                 QueryResult result = queryResult(statement, "SELECT date_format(TIMESTAMP '2001-01-09 09:04', '%M')");
                 assertThat(result).contains(row("一月"));
             }
@@ -208,13 +178,13 @@ public class JdbcTests
         // The JDBC spec is vague on what values getColumns() should return, so accept the values that Facebook or Simba return.
 
         QueryResult result = QueryResult.forResultSet(metaData().getColumns("hive", "default", "nation", null));
-        if (usingPrestoJdbcDriver(connection())) {
+        if (usingPrestoJdbcDriver(connection)) {
             assertThat(result).matches(sqlResultDescriptorForResource("com/facebook/presto/tests/jdbc/get_nation_columns.result"));
         }
-        else if (usingTeradataJdbc4Driver(connection())) {
+        else if (usingTeradataJdbc4Driver(connection)) {
             assertThat(result).matches(sqlResultDescriptorForResource("com/facebook/presto/tests/jdbc/get_nation_columns_simba4.result"));
         }
-        else if (usingTeradataJdbcDriver(connection())) {
+        else if (usingTeradataJdbcDriver(connection)) {
             assertThat(result).matches(sqlResultDescriptorForResource("com/facebook/presto/tests/jdbc/get_nation_columns_simba.result"));
         }
         else {
@@ -234,7 +204,7 @@ public class JdbcTests
     @Test(groups = {JDBC, SIMBA_JDBC})
     public void testSqlEscapeFunctions()
     {
-        if (usingTeradataJdbcDriver(connection())) {
+        if (usingTeradataJdbcDriver(connection)) {
             // These functions, which are defined in the ODBC standard, are implemented within
             // the Simba JDBC and ODBC drivers.  The drivers translate them into equivalent Presto syntax.
             // The translated SQL is executed by Presto.  These tests do not make use of edge-case values or null
@@ -277,11 +247,11 @@ public class JdbcTests
     {
         final String distributedJoin = "distributed_join";
 
-        assertThat(getSessionProperty(connection(), distributedJoin)).isEqualTo(TRUE.toString());
-        setSessionProperty(connection(), distributedJoin, FALSE.toString());
-        assertThat(getSessionProperty(connection(), distributedJoin)).isEqualTo(FALSE.toString());
-        resetSessionProperty(connection(), distributedJoin);
-        assertThat(getSessionProperty(connection(), distributedJoin)).isEqualTo(TRUE.toString());
+        assertThat(getSessionProperty(connection, distributedJoin)).isEqualTo(TRUE.toString());
+        setSessionProperty(connection, distributedJoin, FALSE.toString());
+        assertThat(getSessionProperty(connection, distributedJoin)).isEqualTo(FALSE.toString());
+        resetSessionProperty(connection, distributedJoin);
+        assertThat(getSessionProperty(connection, distributedJoin)).isEqualTo(TRUE.toString());
     }
 
     private QueryResult queryResult(Statement statement, String query)
@@ -293,11 +263,6 @@ public class JdbcTests
     private DatabaseMetaData metaData()
             throws SQLException
     {
-        return connection().getMetaData();
-    }
-
-    private Connection connection()
-    {
-        return defaultQueryExecutor().getConnection();
+        return connection.getMetaData();
     }
 }

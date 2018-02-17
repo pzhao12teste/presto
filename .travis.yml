@@ -54,14 +54,14 @@ deploy:
   true:
     all_branches: true
     condition: -v DEPLOY_S3_ACCESS_KEY && -v MAVEN_CHECKS
-  skip_cleanup: true
-  secret_access_key: ${DEPLOY_S3_SECRET_KEY}
-  provider: s3
-  local-dir: /tmp/artifacts
-  upload-dir: ${ARTIFACTS_UPLOAD_PATH}
+  access_key_id: ${DEPLOY_S3_ACCESS_KEY}
   acl: public_read
   bucket: ${DEPLOY_S3_BUCKET}
-  access_key_id: ${DEPLOY_S3_ACCESS_KEY}
+  local-dir: /tmp/artifacts
+  provider: s3
+  secret_access_key: ${DEPLOY_S3_SECRET_KEY}
+  skip_cleanup: true
+  upload-dir: ${ARTIFACTS_UPLOAD_PATH}
 dist: trusty
 env:
   global:
