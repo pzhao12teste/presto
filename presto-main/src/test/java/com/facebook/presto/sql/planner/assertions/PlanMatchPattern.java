@@ -65,11 +65,16 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
+import static com.facebook.presto.spi.block.SortOrder.ASC_NULLS_FIRST;
+import static com.facebook.presto.spi.block.SortOrder.ASC_NULLS_LAST;
 import static com.facebook.presto.sql.ExpressionUtils.rewriteIdentifiersToSymbolReferences;
 import static com.facebook.presto.sql.planner.assertions.MatchResult.NO_MATCH;
 import static com.facebook.presto.sql.planner.assertions.MatchResult.match;
 import static com.facebook.presto.sql.planner.assertions.StrictAssignedSymbolsMatcher.actualAssignments;
 import static com.facebook.presto.sql.planner.assertions.StrictSymbolsMatcher.actualOutputs;
+import static com.facebook.presto.sql.tree.SortItem.NullOrdering.FIRST;
+import static com.facebook.presto.sql.tree.SortItem.NullOrdering.UNDEFINED;
+import static com.facebook.presto.sql.tree.SortItem.Ordering.ASCENDING;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
@@ -247,9 +252,9 @@ public final class PlanMatchPattern
         return node(SortNode.class, source);
     }
 
-    public static PlanMatchPattern topN(long count, List<String> orderBy, PlanMatchPattern source)
+    public static PlanMatchPattern topN(long count, List<Ordering> orderBy, PlanMatchPattern source)
     {
-        return node(TopNNode.class, source).with(new TopNMatcher(count, toSymbolAliases(orderBy)));
+        return node(TopNNode.class, source).with(new TopNMatcher(count, orderBy));
     }
 
     public static PlanMatchPattern output(PlanMatchPattern source)
@@ -654,9 +659,9 @@ public final class PlanMatchPattern
                         .collect(toImmutableMap(entry -> new SymbolAlias(entry.getKey()), Map.Entry::getValue)));
     }
 
-    public static Ordering sort(String field, SortItem.Ordering sortOrder, SortItem.NullOrdering nullOrder)
+    public static Ordering sort(String field, SortItem.Ordering ordering, SortItem.NullOrdering nullOrdering)
     {
-        return new Ordering(field, sortOrder, nullOrder);
+        return new Ordering(field, ordering, nullOrdering);
     }
 
     @Override
@@ -711,14 +716,14 @@ public final class PlanMatchPattern
     public static class Ordering
     {
         private final String field;
-        private final SortItem.Ordering sortOrder;
-        private final SortItem.NullOrdering nullOrder;
+        private final SortItem.Ordering ordering;
+        private final SortItem.NullOrdering nullOrdering;
 
-        private Ordering(String field, SortItem.Ordering sortOrder, SortItem.NullOrdering nullOrder)
+        private Ordering(String field, SortItem.Ordering ordering, SortItem.NullOrdering nullOrdering)
         {
             this.field = field;
-            this.sortOrder = sortOrder;
-            this.nullOrder = nullOrder;
+            this.ordering = ordering;
+            this.nullOrdering = nullOrdering;
         }
 
         public String getField()
@@ -726,22 +731,43 @@ public final class PlanMatchPattern
             return field;
         }
 
-        public SortItem.Ordering getSortOrder()
+        public SortItem.Ordering getOrdering()
         {
-            return sortOrder;
+            return ordering;
         }
 
-        public SortItem.NullOrdering getNullOrder()
+        public SortItem.NullOrdering getNullOrdering()
         {
-            return nullOrder;
+            return nullOrdering;
+        }
+
+        public SortOrder getSortOrder()
+        {
+            checkState(nullOrdering != UNDEFINED, "nullOrdering is undefined");
+            if (ordering == ASCENDING) {
+                if (nullOrdering == FIRST) {
+                    return ASC_NULLS_FIRST;
+                }
+                else {
+                    return ASC_NULLS_LAST;
+                }
+            }
+            else {
+                if (nullOrdering == FIRST) {
+                    return ASC_NULLS_FIRST;
+                }
+                else {
+                    return ASC_NULLS_LAST;
+                }
+            }
         }
 
         @Override
         public String toString()
         {
-            String result = field + " " + sortOrder;
-            if (nullOrder != SortItem.NullOrdering.UNDEFINED) {
-                result += " NULLS " + nullOrder;
+            String result = field + " " + ordering;
+            if (nullOrdering != UNDEFINED) {
+                result += " NULLS " + nullOrdering;
             }
 
             return result;
