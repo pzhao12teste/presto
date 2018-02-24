@@ -11,28 +11,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.operator.exchange;
+package com.facebook.presto.sql.planner.iterative.rule;
 
-import com.facebook.presto.spi.Page;
-import com.google.common.util.concurrent.ListenableFuture;
-
-import static com.facebook.presto.operator.Operator.NOT_BLOCKED;
-
-public interface LocalExchanger
+public class TestPickTableLayoutWithoutPredicatePushDown
+        extends BasePickTableLayoutTest
 {
-    LocalExchanger FINISHED = new LocalExchanger()
+    public TestPickTableLayoutWithoutPredicatePushDown()
     {
-        @Override
-        public void accept(Page page) {}
-
-        @Override
-        public ListenableFuture<?> waitForWriting()
-        {
-            return NOT_BLOCKED;
-        }
-    };
-
-    void accept(Page page);
-
-    ListenableFuture<?> waitForWriting();
+        super(false);
+    }
 }

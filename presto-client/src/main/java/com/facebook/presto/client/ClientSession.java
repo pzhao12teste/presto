@@ -44,6 +44,7 @@ public class ClientSession
     private final Map<String, String> properties;
     private final Map<String, String> preparedStatements;
     private final String transactionId;
+    private final boolean debug;
     private final Duration clientRequestTimeout;
 
     public static ClientSession withCatalogAndSchema(ClientSession session, String catalog, String schema)
@@ -61,6 +62,7 @@ public class ClientSession
                 session.getProperties(),
                 session.getPreparedStatements(),
                 session.getTransactionId(),
+                session.isDebug(),
                 session.getClientRequestTimeout());
     }
 
@@ -79,6 +81,7 @@ public class ClientSession
                 properties,
                 session.getPreparedStatements(),
                 session.getTransactionId(),
+                session.isDebug(),
                 session.getClientRequestTimeout());
     }
 
@@ -97,6 +100,7 @@ public class ClientSession
                 session.getProperties(),
                 preparedStatements,
                 session.getTransactionId(),
+                session.isDebug(),
                 session.getClientRequestTimeout());
     }
 
@@ -115,6 +119,7 @@ public class ClientSession
                 session.getProperties(),
                 session.getPreparedStatements(),
                 transactionId,
+                session.isDebug(),
                 session.getClientRequestTimeout());
     }
 
@@ -133,6 +138,7 @@ public class ClientSession
                 session.getProperties(),
                 session.getPreparedStatements(),
                 null,
+                session.isDebug(),
                 session.getClientRequestTimeout());
     }
 
@@ -149,6 +155,7 @@ public class ClientSession
             Map<String, String> properties,
             Map<String, String> preparedStatements,
             String transactionId,
+            boolean debug,
             Duration clientRequestTimeout)
     {
         this.server = requireNonNull(server, "server is null");
@@ -161,6 +168,7 @@ public class ClientSession
         this.locale = locale;
         this.timeZone = TimeZoneKey.getTimeZoneKey(timeZoneId);
         this.transactionId = transactionId;
+        this.debug = debug;
         this.properties = ImmutableMap.copyOf(requireNonNull(properties, "properties is null"));
         this.preparedStatements = ImmutableMap.copyOf(requireNonNull(preparedStatements, "preparedStatements is null"));
         this.clientRequestTimeout = clientRequestTimeout;
@@ -241,7 +249,7 @@ public class ClientSession
 
     public boolean isDebug()
     {
-        return false;
+        return debug;
     }
 
     public Duration getClientRequestTimeout()
@@ -263,6 +271,7 @@ public class ClientSession
                 .add("locale", locale)
                 .add("properties", properties)
                 .add("transactionId", transactionId)
+                .add("debug", debug)
                 .toString();
     }
 }

@@ -13,14 +13,15 @@
  */
 package com.facebook.presto.spi.connector;
 
-public final class NotPartitionedPartitionHandle
+public class NotPartitionedPartitionHandle
         extends ConnectorPartitionHandle
 {
     public static final ConnectorPartitionHandle NOT_PARTITIONED = new NotPartitionedPartitionHandle();
 
-    private NotPartitionedPartitionHandle() {}
+    private NotPartitionedPartitionHandle()
+    {
+    }
 
-    @SuppressWarnings({"EqualsWhichDoesntCheckParameterClass", "ObjectEquality"})
     @Override
     public boolean equals(Object obj)
     {

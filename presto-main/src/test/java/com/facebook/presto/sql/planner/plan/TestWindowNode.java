@@ -20,7 +20,6 @@ import com.facebook.presto.server.SliceSerializer;
 import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.sql.Serialization;
 import com.facebook.presto.sql.parser.SqlParser;
-import com.facebook.presto.sql.planner.OrderingScheme;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.tree.Expression;
@@ -108,9 +107,8 @@ public class TestWindowNode
         PlanNodeId id = newId();
         WindowNode.Specification specification = new WindowNode.Specification(
                 ImmutableList.of(columnA),
-                Optional.of(new OrderingScheme(
-                        ImmutableList.of(columnB),
-                        ImmutableMap.of(columnB, SortOrder.ASC_NULLS_FIRST))));
+                ImmutableList.of(columnB),
+                ImmutableMap.of(columnB, SortOrder.ASC_NULLS_FIRST));
         Map<Symbol, WindowNode.Function> functions = ImmutableMap.of(windowSymbol, new WindowNode.Function(functionCall, signature, frame));
         Optional<Symbol> hashSymbol = Optional.of(columnB);
         Set<Symbol> prePartitionedInputs = ImmutableSet.of(columnA);

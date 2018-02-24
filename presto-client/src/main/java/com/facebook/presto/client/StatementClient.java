@@ -89,6 +89,7 @@ public class StatementClient
             firstNonNull(StatementClient.class.getPackage().getImplementationVersion(), "unknown");
 
     private final OkHttpClient httpClient;
+    private final boolean debug;
     private final String query;
     private final AtomicReference<QueryResults> currentResults = new AtomicReference<>();
     private final AtomicReference<String> setCatalog = new AtomicReference<>();
@@ -113,6 +114,7 @@ public class StatementClient
         requireNonNull(query, "query is null");
 
         this.httpClient = httpClient;
+        this.debug = session.isDebug();
         this.timeZone = session.getTimeZone();
         this.query = query;
         this.requestTimeoutNanos = session.getClientRequestTimeout().roundTo(NANOSECONDS);
@@ -182,6 +184,11 @@ public class StatementClient
     public TimeZoneKey getTimeZone()
     {
         return timeZone;
+    }
+
+    public boolean isDebug()
+    {
+        return debug;
     }
 
     public boolean isClosed()

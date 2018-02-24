@@ -21,7 +21,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
 
@@ -251,29 +250,6 @@ public final class Domain
         Domain other = (Domain) obj;
         return Objects.equals(this.values, other.values) &&
                 this.nullAllowed == other.nullAllowed;
-    }
-
-    /**
-     * Reduces the number of discrete components in the Domain if there are too many.
-     */
-    public Domain simplify()
-    {
-        ValueSet simplifiedValueSet = values.getValuesProcessor().<Optional<ValueSet>>transform(
-                ranges -> {
-                    if (ranges.getOrderedRanges().size() <= 32) {
-                        return Optional.empty();
-                    }
-                    return Optional.of(ValueSet.ofRanges(ranges.getSpan()));
-                },
-                discreteValues -> {
-                    if (discreteValues.getValues().size() <= 32) {
-                        return Optional.empty();
-                    }
-                    return Optional.of(ValueSet.all(values.getType()));
-                },
-                allOrNone -> Optional.empty())
-                .orElse(values);
-        return Domain.create(simplifiedValueSet, nullAllowed);
     }
 
     public String toString(ConnectorSession session)

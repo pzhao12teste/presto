@@ -19,7 +19,6 @@ import com.facebook.presto.metadata.TableLayoutHandle;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.predicate.Domain;
 import com.facebook.presto.spi.predicate.TupleDomain;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.iterative.rule.test.BaseRuleTest;
 import com.facebook.presto.testing.TestingTransactionHandle;
@@ -36,20 +35,23 @@ import java.util.Optional;
 
 import static com.facebook.presto.spi.predicate.Domain.singleValue;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.constrainedTableScanWithTableLayout;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.filter;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
 import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.expression;
-import static io.airlift.slice.Slices.utf8Slice;
 
-public class TestPickTableLayout
+public abstract class BasePickTableLayoutTest
         extends BaseRuleTest
 {
     protected PickTableLayout pickTableLayout;
     private TableHandle nationTableHandle;
     private TableLayoutHandle nationTableLayoutHandle;
     protected ConnectorId connectorId;
+
+    public BasePickTableLayoutTest(boolean predicatePushDownEnabled)
+    {
+        super(predicatePushDownEnabled);
+    }
 
     @BeforeMethod
     public void setUpPerMethod()
@@ -63,7 +65,7 @@ public class TestPickTableLayout
 
         nationTableLayoutHandle = new TableLayoutHandle(connectorId,
                 TestingTransactionHandle.create(),
-                new TpchTableLayoutHandle((TpchTableHandle) nationTableHandle.getConnectorHandle(), TupleDomain.all()));
+                new TpchTableLayoutHandle((TpchTableHandle) nationTableHandle.getConnectorHandle(), Optional.empty()));
     }
 
     @Test
@@ -180,45 +182,5 @@ public class TestPickTableLayout
                                         "nation",
                                         ImmutableMap.of("nationkey", singleValue(BIGINT, 44L)),
                                         ImmutableMap.of("nationkey", "nationkey"))));
-    }
-
-    @Test
-    public void ruleWithPushdownableToTableLayoutPredicate()
-    {
-        TableHandle ordersTableHandle = new TableHandle(
-                connectorId,
-                new TpchTableHandle(connectorId.toString(), "orders", 1.0));
-        Type orderStatusType = createVarcharType(1);
-        tester().assertThat(pickTableLayout.pickTableLayoutForPredicate())
-                .on(p -> p.filter(expression("orderstatus = 'O'"),
-                        p.tableScan(
-                                ordersTableHandle,
-                                ImmutableList.of(p.symbol("orderstatus", orderStatusType)),
-                                ImmutableMap.of(p.symbol("orderstatus", orderStatusType), new TpchColumnHandle("orderstatus", orderStatusType)))))
-                .matches(constrainedTableScanWithTableLayout(
-                        "orders",
-                        ImmutableMap.of("orderstatus", singleValue(orderStatusType, utf8Slice("O"))),
-                        ImmutableMap.of("orderstatus", "orderstatus")));
-    }
-
-    @Test
-    public void nonDeterministicPredicate()
-    {
-        TableHandle ordersTableHandle = new TableHandle(
-                connectorId,
-                new TpchTableHandle(connectorId.toString(), "orders", 1.0));
-        Type orderStatusType = createVarcharType(1);
-        tester().assertThat(pickTableLayout.pickTableLayoutForPredicate())
-                .on(p -> p.filter(expression("orderstatus = 'O' AND rand() = 0"),
-                        p.tableScan(
-                                ordersTableHandle,
-                                ImmutableList.of(p.symbol("orderstatus", orderStatusType)),
-                                ImmutableMap.of(p.symbol("orderstatus", orderStatusType), new TpchColumnHandle("orderstatus", orderStatusType)))))
-                .matches(
-                        filter("rand() = 0",
-                                constrainedTableScanWithTableLayout(
-                                        "orders",
-                                        ImmutableMap.of("orderstatus", singleValue(orderStatusType, utf8Slice("O"))),
-                                        ImmutableMap.of("orderstatus", "orderstatus"))));
     }
 }

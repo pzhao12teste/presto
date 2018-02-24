@@ -50,7 +50,8 @@ public class MergeLimitWithSort
                         parent.getId(),
                         child.getSource(),
                         parent.getCount(),
-                        child.getOrderingScheme(),
+                        child.getOrderBy(),
+                        child.getOrderings(),
                         parent.isPartial() ? TopNNode.Step.PARTIAL : TopNNode.Step.SINGLE));
     }
 }

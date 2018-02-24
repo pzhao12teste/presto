@@ -237,20 +237,13 @@ public final class ExpressionUtils
         return filterConjuncts(expression, not(DeterminismEvaluator::isDeterministic));
     }
 
-    public static Expression filterConjuncts(Expression expression, Predicate<Expression> predicate)
+    private static Expression filterConjuncts(Expression expression, Predicate<Expression> predicate)
     {
         List<Expression> conjuncts = extractConjuncts(expression).stream()
                 .filter(predicate)
                 .collect(toList());
 
         return combineConjuncts(conjuncts);
-    }
-
-    public static boolean referencesAny(Expression expression, Collection<Symbol> variables)
-    {
-        Set<Symbol> references = SymbolsExtractor.extractUnique(expression);
-
-        return variables.stream().anyMatch(references::contains);
     }
 
     public static Function<Expression, Expression> expressionOrNullSymbols(final Predicate<Symbol>... nullSymbolScopes)

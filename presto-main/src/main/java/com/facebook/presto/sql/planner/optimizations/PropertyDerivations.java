@@ -29,7 +29,6 @@ import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.DomainTranslator;
 import com.facebook.presto.sql.planner.ExpressionInterpreter;
 import com.facebook.presto.sql.planner.NoOpSymbolResolver;
-import com.facebook.presto.sql.planner.OrderingScheme;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.optimizations.ActualProperties.Global;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
@@ -210,9 +209,7 @@ class PropertyDerivations
             ActualProperties properties = Iterables.getOnlyElement(inputProperties);
 
             // If the input is completely pre-partitioned and sorted, then the original input properties will be respected
-            Optional<OrderingScheme> orderingScheme = node.getOrderingScheme();
-            if (ImmutableSet.copyOf(node.getPartitionBy()).equals(node.getPrePartitionedInputs())
-                    && (!orderingScheme.isPresent() || node.getPreSortedOrderPrefix() == orderingScheme.get().getOrderBy().size())) {
+            if (ImmutableSet.copyOf(node.getPartitionBy()).equals(node.getPrePartitionedInputs()) && node.getPreSortedOrderPrefix() == node.getOrderBy().size()) {
                 return properties;
             }
 
@@ -234,11 +231,9 @@ class PropertyDerivations
             if (!node.getPartitionBy().isEmpty()) {
                 localProperties.add(new GroupingProperty<>(node.getPartitionBy()));
             }
-
-            orderingScheme.ifPresent(scheme ->
-                    scheme.getOrderBy().stream()
-                            .map(column -> new SortingProperty<>(column, scheme.getOrdering(column)))
-                            .forEach(localProperties::add));
+            for (Symbol column : node.getOrderBy()) {
+                localProperties.add(new SortingProperty<>(column, node.getOrderings().get(column)));
+            }
 
             return ActualProperties.builderFrom(properties)
                     .local(LocalProperties.normalizeAndPrune(localProperties.build()))
@@ -291,8 +286,8 @@ class PropertyDerivations
 
             ImmutableList.Builder<LocalProperty<Symbol>> localProperties = ImmutableList.builder();
             localProperties.add(new GroupingProperty<>(node.getPartitionBy()));
-            for (Symbol column : node.getOrderingScheme().getOrderBy()) {
-                localProperties.add(new SortingProperty<>(column, node.getOrderingScheme().getOrdering(column)));
+            for (Symbol column : node.getOrderBy()) {
+                localProperties.add(new SortingProperty<>(column, node.getOrderings().get(column)));
             }
 
             return ActualProperties.builderFrom(properties)
@@ -305,8 +300,8 @@ class PropertyDerivations
         {
             ActualProperties properties = Iterables.getOnlyElement(inputProperties);
 
-            List<SortingProperty<Symbol>> localProperties = node.getOrderingScheme().getOrderBy().stream()
-                    .map(column -> new SortingProperty<>(column, node.getOrderingScheme().getOrdering(column)))
+            List<SortingProperty<Symbol>> localProperties = node.getOrderBy().stream()
+                    .map(column -> new SortingProperty<>(column, node.getOrderings().get(column)))
                     .collect(toImmutableList());
 
             return ActualProperties.builderFrom(properties)
@@ -319,8 +314,8 @@ class PropertyDerivations
         {
             ActualProperties properties = Iterables.getOnlyElement(inputProperties);
 
-            List<SortingProperty<Symbol>> localProperties = node.getOrderingScheme().getOrderBy().stream()
-                    .map(column -> new SortingProperty<>(column, node.getOrderingScheme().getOrdering(column)))
+            List<SortingProperty<Symbol>> localProperties = node.getOrderBy().stream()
+                    .map(column -> new SortingProperty<>(column, node.getOrderings().get(column)))
                     .collect(toImmutableList());
 
             return ActualProperties.builderFrom(properties)

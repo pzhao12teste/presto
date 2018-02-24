@@ -35,7 +35,6 @@ import com.facebook.presto.spi.predicate.Range;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.FunctionInvoker;
-import com.facebook.presto.sql.planner.OrderingScheme;
 import com.facebook.presto.sql.planner.Partitioning;
 import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanFragment;
@@ -120,6 +119,7 @@ import static com.facebook.presto.cost.PlanNodeStatsEstimate.UNKNOWN_STATS;
 import static com.facebook.presto.execution.StageInfo.getAllStages;
 import static com.facebook.presto.operator.PipelineExecutionStrategy.UNGROUPED_EXECUTION;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.sql.planner.DomainUtils.simplifyDomain;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.planPrinter.PlanNodeStatsSummarizer.aggregatePlanNodeStats;
 import static com.google.common.base.CaseFormat.UPPER_UNDERSCORE;
@@ -716,6 +716,8 @@ public class PlanPrinter
         {
             List<String> partitionBy = Lists.transform(node.getPartitionBy(), Functions.toStringFunction());
 
+            List<String> orderBy = Lists.transform(node.getOrderBy(), input -> input + " " + node.getOrderings().get(input));
+
             List<String> args = new ArrayList<>();
             if (!partitionBy.isEmpty()) {
                 List<Symbol> prePartitioned = node.getPartitionBy().stream()
@@ -740,15 +742,14 @@ public class PlanPrinter
                 }
                 args.add(format("partition by (%s)", builder));
             }
-            if (node.getOrderingScheme().isPresent()) {
-                OrderingScheme orderingScheme = node.getOrderingScheme().get();
+            if (!orderBy.isEmpty()) {
                 args.add(format("order by (%s)", Stream.concat(
-                        orderingScheme.getOrderBy().stream()
+                        node.getOrderBy().stream()
                                 .limit(node.getPreSortedOrderPrefix())
-                                .map(symbol -> "<" + symbol + " " + orderingScheme.getOrdering(symbol) + ">"),
-                        orderingScheme.getOrderBy().stream()
+                                .map(symbol -> "<" + symbol + " " + node.getOrderings().get(symbol) + ">"),
+                        node.getOrderBy().stream()
                                 .skip(node.getPreSortedOrderPrefix())
-                                .map(symbol -> symbol + " " + orderingScheme.getOrdering(symbol)))
+                                .map(symbol -> symbol + " " + node.getOrderings().get(symbol)))
                         .collect(Collectors.joining(", "))));
             }
 
@@ -771,13 +772,9 @@ public class PlanPrinter
         @Override
         public Void visitTopNRowNumber(TopNRowNumberNode node, Integer indent)
         {
-            List<String> partitionBy = node.getPartitionBy().stream()
-                    .map(Functions.toStringFunction())
-                    .collect(toImmutableList());
+            List<String> partitionBy = Lists.transform(node.getPartitionBy(), Functions.toStringFunction());
 
-            List<String> orderBy = node.getOrderingScheme().getOrderBy().stream()
-                    .map(input -> input + " " + node.getOrderingScheme().getOrdering(input))
-                    .collect(toImmutableList());
+            List<String> orderBy = Lists.transform(node.getOrderBy(), input -> input + " " + node.getOrderings().get(input));
 
             List<String> args = new ArrayList<>();
             args.add(format("partition by (%s)", Joiner.on(", ").join(partitionBy)));
@@ -1009,7 +1006,7 @@ public class PlanPrinter
         @Override
         public Void visitTopN(TopNNode node, Integer indent)
         {
-            Iterable<String> keys = Iterables.transform(node.getOrderingScheme().getOrderBy(), input -> input + " " + node.getOrderingScheme().getOrdering(input));
+            Iterable<String> keys = Iterables.transform(node.getOrderBy(), input -> input + " " + node.getOrderings().get(input));
 
             print(indent, "- TopN[%s by (%s)] => [%s]", node.getCount(), Joiner.on(", ").join(keys), formatOutputs(node.getOutputSymbols()));
             printPlanNodesStats(indent + 2, node);
@@ -1020,7 +1017,7 @@ public class PlanPrinter
         @Override
         public Void visitSort(SortNode node, Integer indent)
         {
-            Iterable<String> keys = Iterables.transform(node.getOrderingScheme().getOrderBy(), input -> input + " " + node.getOrderingScheme().getOrdering(input));
+            Iterable<String> keys = Iterables.transform(node.getOrderBy(), input -> input + " " + node.getOrderings().get(input));
 
             print(indent, "- Sort[%s] => [%s]", Joiner.on(", ").join(keys), formatOutputs(node.getOutputSymbols()));
             printPlanNodesStats(indent + 2, node);
@@ -1232,7 +1229,7 @@ public class PlanPrinter
             checkArgument(!constraint.isNone());
             Map<ColumnHandle, Domain> domains = constraint.getDomains().get();
             if (!constraint.isAll() && domains.containsKey(column)) {
-                print(indent, ":: %s", formatDomain(domains.get(column).simplify()));
+                print(indent, ":: %s", formatDomain(simplifyDomain(domains.get(column))));
             }
         }
 
