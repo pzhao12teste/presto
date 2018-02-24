@@ -49,9 +49,11 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import io.airlift.tpch.Distributions;
 import io.airlift.tpch.LineItemColumn;
 import io.airlift.tpch.OrderColumn;
 import io.airlift.tpch.OrderGenerator;
+import io.airlift.tpch.PartColumn;
 import io.airlift.tpch.TpchColumn;
 import io.airlift.tpch.TpchColumnType;
 import io.airlift.tpch.TpchEntity;
@@ -89,12 +91,25 @@ public class TpchMetadata
 
     public static final String ROW_NUMBER_COLUMN_NAME = "row_number";
 
-    private static final Set<String> ORDER_STATUS_VALUES = ImmutableSet.of("F", "O", "P");
-    private static final Set<Slice> ORDER_STATUS_VALUES_SLICES = ORDER_STATUS_VALUES.stream()
+    private static final Set<Slice> ORDER_STATUS_VALUES = ImmutableSet.of("F", "O", "P").stream()
             .map(Slices::utf8Slice)
             .collect(toImmutableSet());
     private static final Set<NullableValue> ORDER_STATUS_NULLABLE_VALUES = ORDER_STATUS_VALUES.stream()
-            .map(value -> new NullableValue(getPrestoType(OrderColumn.ORDER_STATUS), Slices.utf8Slice(value)))
+            .map(value -> new NullableValue(getPrestoType(OrderColumn.ORDER_STATUS), value))
+            .collect(toSet());
+
+    private static final Set<Slice> PART_TYPE_VALUES = Distributions.getDefaultDistributions().getPartTypes().getValues().stream()
+            .map(Slices::utf8Slice)
+            .collect(toImmutableSet());
+    private static final Set<NullableValue> PART_TYPE_NULLABLE_VALUES = PART_TYPE_VALUES.stream()
+            .map(value -> new NullableValue(getPrestoType(PartColumn.TYPE), value))
+            .collect(toSet());
+
+    private static final Set<Slice> PART_CONTAINER_VALUES = Distributions.getDefaultDistributions().getPartContainers().getValues().stream()
+            .map(Slices::utf8Slice)
+            .collect(toImmutableSet());
+    private static final Set<NullableValue> PART_CONTAINER_NULLABLE_VALUES = PART_CONTAINER_VALUES.stream()
+            .map(value -> new NullableValue(getPrestoType(PartColumn.CONTAINER), value))
             .collect(toSet());
 
     private final String connectorId;
@@ -177,10 +192,17 @@ public class TpchMetadata
             localProperties = ImmutableList.of(new SortingProperty<>(orderKeyColumn, SortOrder.ASC_NULLS_FIRST));
             predicate = toTupleDomain(ImmutableMap.of(
                     toColumnHandle(OrderColumn.ORDER_STATUS),
-                    ORDER_STATUS_NULLABLE_VALUES.stream()
-                            .filter(convertToPredicate(constraint.getSummary(), OrderColumn.ORDER_STATUS))
-                            .collect(toSet())));
+                    filterValues(ORDER_STATUS_NULLABLE_VALUES, OrderColumn.ORDER_STATUS, constraint)));
             unenforcedConstraint = filterOutColumnFromPredicate(constraint.getSummary(), OrderColumn.ORDER_STATUS);
+        }
+        else if (tableHandle.getTableName().equals(TpchTable.PART.getTableName())) {
+            predicate = toTupleDomain(ImmutableMap.of(
+                    toColumnHandle(PartColumn.CONTAINER),
+                    filterValues(PART_CONTAINER_NULLABLE_VALUES, PartColumn.CONTAINER, constraint),
+                    toColumnHandle(PartColumn.TYPE),
+                    filterValues(PART_TYPE_NULLABLE_VALUES, PartColumn.TYPE, constraint)));
+            unenforcedConstraint = filterOutColumnFromPredicate(constraint.getSummary(), PartColumn.CONTAINER);
+            unenforcedConstraint = filterOutColumnFromPredicate(unenforcedConstraint, PartColumn.TYPE);
         }
         else if (tableHandle.getTableName().equals(TpchTable.LINE_ITEM.getTableName())) {
             ColumnHandle orderKeyColumn = columns.get(columnNaming.getName(LineItemColumn.ORDER_KEY));
@@ -205,6 +227,14 @@ public class TpchMetadata
                 localProperties);
 
         return ImmutableList.of(new ConnectorTableLayoutResult(layout, unenforcedConstraint));
+    }
+
+    private Set<NullableValue> filterValues(Set<NullableValue> nullableValues, TpchColumn<?> column, Constraint<ColumnHandle> constraint)
+    {
+        return nullableValues.stream()
+                .filter(convertToPredicate(constraint.getSummary(), column))
+                .filter(value -> constraint.predicate().test(ImmutableMap.of(toColumnHandle(column), value)))
+                .collect(toSet());
     }
 
     @Override
@@ -295,7 +325,7 @@ public class TpchMetadata
             Map<ColumnHandle, Domain> domains = constraintSummary.getDomains().get();
             Optional<Domain> orderStatusDomain = Optional.ofNullable(domains.get(toColumnHandle(ORDER_STATUS)));
             Optional<Map<TpchColumn<?>, List<Object>>> allowedColumnValues = orderStatusDomain.map(domain -> {
-                List<Object> allowedValues = ORDER_STATUS_VALUES_SLICES.stream()
+                List<Object> allowedValues = ORDER_STATUS_VALUES.stream()
                         .filter(domain::includesNullableValue)
                         .collect(toList());
                 return avoidTrivialOrderStatusRestriction(allowedValues);
@@ -306,7 +336,7 @@ public class TpchMetadata
 
     private Map<TpchColumn<?>, List<Object>> avoidTrivialOrderStatusRestriction(List<Object> allowedValues)
     {
-        if (allowedValues.containsAll(ORDER_STATUS_VALUES_SLICES)) {
+        if (allowedValues.containsAll(ORDER_STATUS_VALUES)) {
             return emptyMap();
         }
         else {
@@ -409,7 +439,8 @@ public class TpchMetadata
         return nullableValue -> columnPredicate.contains(TupleDomain.fromFixedValues(ImmutableMap.of(columnHandle, nullableValue)));
     }
 
-    private TupleDomain<ColumnHandle> filterOutColumnFromPredicate(TupleDomain<ColumnHandle> predicate, TpchColumn column)
+    @VisibleForTesting
+    TupleDomain<ColumnHandle> filterOutColumnFromPredicate(TupleDomain<ColumnHandle> predicate, TpchColumn column)
     {
         return filterColumns(predicate, tpchColumnHandle -> !tpchColumnHandle.equals(toColumnHandle(column)));
     }
